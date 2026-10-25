@@ -9,7 +9,7 @@
       "name": "piano",
       "source": "./plugins/piano",
       "description": "A playable piano above the prompt: /piano opens it, play with mouse clicks, glissando or your keyboard (any layout), with sound from C1 to C8.",
-      "version": "0.1.0"
+      "version": "0.1.1"
     }
   ]
 }

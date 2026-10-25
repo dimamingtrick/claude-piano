@@ -84,6 +84,17 @@ function stepAt(cellX: number, cellY: number, count: number): number | null {
   return whiteStep(Math.floor(x / PITCH))
 }
 
+// What the keys tell the hooks module: a note to play or an octave change.
+type KeyEvent = { seq: number; play?: number; shift?: number }
+
+// A surface delivers one post per frame and a later one replaces an
+// undelivered one, so each post carries the recent events and the hooks
+// module plays only those it has not seen yet.
+type Outbox = { id: string; seq: number; recent: KeyEvent[] }
+
+const RECENT = 32
+const outboxes = new WeakMap<object, Outbox>()
+
 const Keys: ClientModule<Props, State> = (props, surface) => {
   const { Box, Text } = surface.elements
   const count = props.count
@@ -94,8 +105,21 @@ const Keys: ClientModule<Props, State> = (props, surface) => {
     surface.setState({ ...(surface.state ?? state), ...next })
   }
 
+  let outbox = outboxes.get(surface)
+  if (outbox === undefined) {
+    outbox = { id: Math.random().toString(36).slice(2), seq: 0, recent: [] }
+    outboxes.set(surface, outbox)
+  }
+  const box = outbox
+
+  const send = (event: Omit<KeyEvent, 'seq'>) => {
+    box.seq += 1
+    box.recent = [...box.recent, { seq: box.seq, ...event }].slice(-RECENT)
+    surface.post({ id: box.id, events: box.recent })
+  }
+
   const play = (step: number) => {
-    surface.post({ play: step })
+    send({ play: step })
   }
 
   if (surface.state === undefined) {
@@ -133,11 +157,11 @@ const Keys: ClientModule<Props, State> = (props, surface) => {
   surface.onKey(event => {
     if (event.ctrl || event.meta) return
     if (event.key === 'left' || event.key === 'down') {
-      surface.post({ shift: -1 })
+      send({ shift: -1 })
       return
     }
     if (event.key === 'right' || event.key === 'up') {
-      surface.post({ shift: 1 })
+      send({ shift: 1 })
       return
     }
     const char = event.key.toLowerCase()

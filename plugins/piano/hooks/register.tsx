@@ -43,6 +43,29 @@ function shift($: Parameters<typeof read>[0], by: number) {
   return update($, octave, value => clampOctave(value + by))
 }
 
+type KeyEvent = { seq: number; play?: number; shift?: number }
+
+// The events of a post not played yet, in order; marks them seen.
+export function unseen(data: unknown, seen: Map<string, number>): KeyEvent[] {
+  const post = data as { id?: unknown; events?: unknown } | null
+  if (typeof post?.id !== 'string' || !Array.isArray(post.events)) return []
+
+  const events = (post.events as KeyEvent[]).filter(
+    event => typeof event?.seq === 'number',
+  )
+  const last = seen.get(post.id)
+  // An instance not heard from yet (after a reload, say) may carry events
+  // played before: only its newest one is new.
+  const fresh =
+    last === undefined ? events.slice(-1) : events.filter(event => event.seq > last)
+  const newest = fresh[fresh.length - 1]
+  if (newest !== undefined) seen.set(post.id, newest.seq)
+
+  return fresh.filter(
+    event => typeof event.play === 'number' || typeof event.shift === 'number',
+  )
+}
+
 export const register: Register = on => {
   on('session.start', async ($, e, next) => {
     await $.command.register({
@@ -60,16 +83,21 @@ export const register: Register = on => {
     return { text: wasOpen ? 'Пианино закрыто.' : 'Пианино открыто.' }
   })
 
-  // The keys module posts a note to play or an octave change.
+  // The last event played from each keys instance, by its id.
+  const seen = new Map<string, number>()
+
+  // The keys module posts its recent events: notes to play, octave changes.
   on('ui.message', async ($, e, next) => {
     if (e.element !== 'keys') return next(e)
-    const data = e.data as { play?: unknown; shift?: unknown } | null
+    const fresh = unseen(e.data, seen)
 
-    if (typeof data?.play === 'number') {
-      const base = clampOctave(await read($, octave))
-      void $.audio.play({ asset: noteFile(base, data.play) }).catch(() => {})
-    } else if (typeof data?.shift === 'number') {
-      await shift($, data.shift)
+    for (const event of fresh) {
+      if (event.play !== undefined) {
+        const base = clampOctave(await read($, octave))
+        void $.audio.play({ asset: noteFile(base, event.play) }).catch(() => {})
+      } else if (event.shift !== undefined) {
+        await shift($, event.shift)
+      }
     }
 
     return next(e)

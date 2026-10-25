@@ -1,5 +1,7 @@
 import { expect, test } from 'claude-code/testing'
 
+import { unseen } from '../hooks/register'
+
 const BAND = {
   plugin: 'piano',
   component: 'AbovePrompt',
@@ -75,4 +77,46 @@ test('/piano plays by mouse and keyboard, shifts octave and closes', async ($, o
   const after = await $.ui.mount({ ...BAND, surface: 'desktop' })
   expect(await after.find({ key: 'keys' })).toBeUndefined()
   await after.unmount()
+})
+
+test('fast presses in one frame each play a note', async ($, on) => {
+  const played: string[] = []
+  on('command.register', () => ({ value: { command: 'piano' } }))
+  on('session.start', (_, e) => ({ cwd: e.cwd }))
+  on('audio.play', (_, e) => {
+    if (e.clip.asset !== undefined) played.push(e.clip.asset)
+    return { value: undefined }
+  })
+  on('ui.message', () => ({}))
+  on('ui.render', ($, e) => {
+    const { Box } = $.ui.resolve(e)
+    return <Box />
+  })
+
+  await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
+  await $.command.run({ command: 'piano', ...RUN })
+
+  const ui = await $.ui.mount({ ...BAND, surface: 'desktop' })
+  await ui.key({ key: 'm', in: 'keys' })
+  await Promise.all(
+    ['z', 'x', 'c', 'v', 'b'].map(key => ui.key({ key, in: 'keys' })),
+  )
+  await ui.key({ key: 'n', in: 'keys' })
+  await ui.unmount()
+
+  expect([...played].sort()).toEqual(
+    ['sounds/B3.wav', 'sounds/C3.wav', 'sounds/D3.wav', 'sounds/E3.wav', 'sounds/F3.wav', 'sounds/G3.wav', 'sounds/A3.wav'].sort(),
+  )
+})
+
+test('a reload replays none of the notes played before it', async () => {
+  const seen = new Map<string, number>()
+  const events = [1, 2, 3].map(seq => ({ seq, play: seq }))
+
+  expect(unseen({ id: 'a', events }, seen)).toEqual([{ seq: 3, play: 3 }])
+  expect(unseen({ id: 'a', events: [...events, { seq: 4, play: 4 }, { seq: 5, shift: 1 }] }, seen)).toEqual([
+    { seq: 4, play: 4 },
+    { seq: 5, shift: 1 },
+  ])
+  expect(unseen({ id: 'a', events }, seen)).toEqual([])
 })
