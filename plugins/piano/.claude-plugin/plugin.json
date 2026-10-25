@@ -1,0 +1,10 @@
+{
+  "name": "piano",
+  "version": "0.1.0",
+  "description": "A playable piano above the prompt: /piano opens it, play with mouse clicks, glissando or your keyboard (any layout), with sound from C1 to C8.",
+  "author": {
+    "name": "dimamingtrick"
+  },
+  "license": "MIT",
+  "types": "./types/index.d.ts"
+}
